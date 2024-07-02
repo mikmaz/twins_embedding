@@ -8,7 +8,7 @@ import pystan
 
 from matplotlib import pyplot as plt
 
-from idrtools import math
+# from idrtools import math
 
 
 def compile_stan_model(model_code, verbosity=1, cache_dir='./stan_cache'):
