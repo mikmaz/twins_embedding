@@ -1,23 +1,24 @@
 import george
-from george import kernels
-from scipy.optimize import minimize
-from matplotlib import pyplot as plt
 import numpy as np
-from specstan import math
+from george import kernels
+from matplotlib import pyplot as plt
+from scipy.optimize import minimize
+
+from .. import math
 
 
 def _build_george_gp(coordinates, target_value_uncertainties, parameters):
     """Build a george Gaussian Process object and kernels."""
     total_target_value_uncertainties = np.sqrt(
         target_value_uncertainties**2
-        + parameters[0]**2 * np.ones(len(coordinates))
+        + parameters[0] ** 2 * np.ones(len(coordinates))
     )
 
     ndim = coordinates.shape[-1]
     use_dim = list(range(ndim))
 
-    kernel = parameters[1]**2 * kernels.Matern32Kernel(
-        [parameters[2]**2] * len(use_dim), ndim=ndim, axes=use_dim
+    kernel = parameters[1] ** 2 * kernels.Matern32Kernel(
+        [parameters[2] ** 2] * len(use_dim), ndim=ndim, axes=use_dim
     )
 
     gp = george.GP(kernel)
@@ -26,10 +27,19 @@ def _build_george_gp(coordinates, target_value_uncertainties, parameters):
     return gp
 
 
-class ManifoldGaussianProcess():
+class ManifoldGaussianProcess:
     """Class to build and evaluate a Gaussian Process over a given manifold."""
-    def __init__(self, analysis, coordinates, target_values, target_value_uncertainties,
-                 covariates=None, mask=None, parameters=None):
+
+    def __init__(
+        self,
+        analysis,
+        coordinates,
+        target_values,
+        target_value_uncertainties,
+        covariates=None,
+        mask=None,
+        parameters=None,
+    ):
         self.analysis = analysis
         self.coordinates = coordinates
         self.target_values = target_values
@@ -55,30 +65,30 @@ class ManifoldGaussianProcess():
     def _get_default_parameters(self):
         """Return a default set of parameters to use for fits."""
         default_parameters = [
-            0.1,        # intrinsic dispersion
-            0.2,        # kernel amplitude
-            3.,         # kernel length scale
-            0.,         # zeropoint offset
+            0.1,  # intrinsic dispersion
+            0.2,  # kernel amplitude
+            3.0,  # kernel length scale
+            0.0,  # zeropoint offset
         ]
 
         # Slopes for each covariate
         if self.covariates is not None:
-            default_parameters += [0.] * self.covariates.shape[0]
+            default_parameters += [0.0] * self.covariates.shape[0]
 
         return default_parameters
 
     @property
     def parameter_names(self):
         parameter_names = [
-            'intrinsic_dispersion',
-            'gp_kernel_amplitude',
-            'gp_length_scale',
-            'offset',
+            "intrinsic_dispersion",
+            "gp_kernel_amplitude",
+            "gp_length_scale",
+            "offset",
         ]
 
         if self.covariates is not None:
             for i in range(self.covariates.shape[0]):
-                parameter_names.append(f'covariate_slope_{i}')
+                parameter_names.append(f"covariate_slope_{i}")
 
         return parameter_names
 
@@ -116,12 +126,14 @@ class ManifoldGaussianProcess():
         if parameters is None:
             parameters = self.parameters
 
-        gp_parameters, offset, covariate_slopes = self._parse_parameters(parameters)
+        gp_parameters, offset, covariate_slopes = self._parse_parameters(
+            parameters
+        )
 
         gp = _build_george_gp(
             self.coordinates[self.mask],
             self.target_value_uncertainties[self.mask],
-            gp_parameters
+            gp_parameters,
         )
 
         # Calculate the covariate model for the conditioning dataset.
@@ -143,9 +155,7 @@ class ManifoldGaussianProcess():
         if cov:
             # Need a very accurate minimum to be able to measure the covariance since we
             # are using finite differences.
-            use_options = {
-                'ftol': 1e-14
-            }
+            use_options = {"ftol": 1e-14}
         else:
             use_options = {}
 
@@ -180,31 +190,37 @@ class ManifoldGaussianProcess():
             self.parameter_covariance = param_cov
             self.parameter_uncertainties = np.sqrt(np.diag(param_cov))
         else:
-            self.parameter_covariance = np.nan * np.ones((len(self.parameters),
-                                                          len(self.parameters)))
-            self.parameter_uncertainties = np.nan * np.ones(len(self.parameters))
+            self.parameter_covariance = np.nan * np.ones(
+                (len(self.parameters), len(self.parameters))
+            )
+            self.parameter_uncertainties = np.nan * np.ones(
+                len(self.parameters)
+            )
 
         # Calculate the residuals for out-of-sample predictions.
         predictions, prediction_uncertainties = self.predict_out_of_sample()
         self.residuals = self.target_values - predictions
         self.raw_residual_uncertainties = np.sqrt(
-            self.target_value_uncertainties**2
-            + prediction_uncertainties**2
+            self.target_value_uncertainties**2 + prediction_uncertainties**2
         )
 
         self.residual_uncertainties = np.sqrt(
             self.raw_residual_uncertainties**2
-            + self.parameter_dict['intrinsic_dispersion']**2
+            + self.parameter_dict["intrinsic_dispersion"] ** 2
         )
 
         if verbosity >= 1:
             print("GP magnitude residuals fit:")
             print(f"    Fit result:           {result['message']}")
-            for parameter_name, value, uncertainty in \
-                    zip(self.parameter_names, self.parameters,
-                        self.parameter_uncertainties):
+            for parameter_name, value, uncertainty in zip(
+                self.parameter_names,
+                self.parameters,
+                self.parameter_uncertainties,
+            ):
                 if cov:
-                    print(f"    {parameter_name:25s} {value:.3f} ± {uncertainty:.3f}")
+                    print(
+                        f"    {parameter_name:25s} {value:.3f} ± {uncertainty:.3f}"
+                    )
                 else:
                     print(f"    {parameter_name:25s} {value:.3f}")
 
@@ -216,12 +232,16 @@ class ManifoldGaussianProcess():
             print(f"    {'Fit NMAD':25s} {nmad:.3f} mag")
             print(f"    {'Fit std':25s} {std:.3f} mag")
 
-    def _calculate_covariate_model(self, prediction_covariates=None, parameters=None):
+    def _calculate_covariate_model(
+        self, prediction_covariates=None, parameters=None
+    ):
         """Calculate the model with a given set of covariates"""
         if parameters is None:
             parameters = self.parameters
 
-        gp_parameters, offset, covariate_slopes = self._parse_parameters(parameters)
+        gp_parameters, offset, covariate_slopes = self._parse_parameters(
+            parameters
+        )
 
         # Add in zeropoint offset
         model = offset
@@ -233,8 +253,14 @@ class ManifoldGaussianProcess():
 
         return model
 
-    def predict(self, prediction_coordinates, prediction_covariates=None,
-                parameters=None, mask=None, return_uncertainties=True):
+    def predict(
+        self,
+        prediction_coordinates,
+        prediction_covariates=None,
+        parameters=None,
+        mask=None,
+        return_uncertainties=True,
+    ):
         """Predict a Gaussian Process on the given data."""
         if parameters is None:
             parameters = self.parameters
@@ -245,12 +271,14 @@ class ManifoldGaussianProcess():
         if self.mask is not None:
             mask = mask & self.mask
 
-        gp_parameters, offset, covariate_slopes = self._parse_parameters(parameters)
+        gp_parameters, offset, covariate_slopes = self._parse_parameters(
+            parameters
+        )
 
         gp = _build_george_gp(
             self.coordinates[mask],
             self.target_value_uncertainties[mask],
-            gp_parameters
+            gp_parameters,
         )
 
         # Calculate the covariate model for the conditioning dataset, and subtract it
@@ -270,8 +298,9 @@ class ManifoldGaussianProcess():
             prediction_uncertainties = np.sqrt(prediction_variances)
 
         # Add the covariate model back in to the predictions.
-        prediction_model = self._calculate_covariate_model(prediction_covariates,
-                                                           parameters)
+        prediction_model = self._calculate_covariate_model(
+            prediction_covariates, parameters
+        )
         predictions += prediction_model
 
         if return_uncertainties:
@@ -326,8 +355,17 @@ class ManifoldGaussianProcess():
 
         return predictions, prediction_uncertainties
 
-    def plot(self, axis_1=0, axis_2=1, axis_3=2, vmin=-0.3, vmax=0.3, num_points=200,
-             edgecolors='0.3', **kwargs):
+    def plot(
+        self,
+        axis_1=0,
+        axis_2=1,
+        axis_3=2,
+        vmin=-0.3,
+        vmax=0.3,
+        num_points=200,
+        edgecolors="0.3",
+        **kwargs,
+    ):
         """Plot the GP predictions over the parameter space"""
         # We want to only show the residuals, so we need to take out the covariates and
         # zeropoint offset.
@@ -341,7 +379,7 @@ class ManifoldGaussianProcess():
         ax12, ax13, ax32 = self.analysis.scatter_combined(
             residuals,
             mask=self.mask,
-            label='Magnitude residuals',
+            label="Magnitude residuals",
             axis_1=axis_1,
             axis_2=axis_2,
             axis_3=axis_3,
@@ -349,7 +387,7 @@ class ManifoldGaussianProcess():
             vmax=vmax,
             invert_colorbar=True,
             edgecolors=edgecolors,
-            **kwargs
+            **kwargs,
         )
 
         subplot_datas = [
@@ -364,19 +402,21 @@ class ManifoldGaussianProcess():
 
             plot_x, plot_y = np.meshgrid(
                 np.linspace(min_x, max_x, num_points),
-                np.linspace(min_y, max_y, num_points)
+                np.linspace(min_y, max_y, num_points),
             )
 
             flat_plot_x = plot_x.flatten()
             flat_plot_y = plot_y.flatten()
 
-            plot_coords = np.zeros((len(flat_plot_x), self.coordinates.shape[1]))
+            plot_coords = np.zeros(
+                (len(flat_plot_x), self.coordinates.shape[1])
+            )
             plot_coords[:, axis_x] = flat_plot_x
             plot_coords[:, axis_y] = flat_plot_y
 
             # Predict the GP residuals over the manifold without covariates.
             predictions = self.predict(plot_coords, return_uncertainties=False)
-            predictions -= self.parameter_dict['offset']
+            predictions -= self.parameter_dict["offset"]
             predictions -= zeropoint
             predictions = predictions.reshape(plot_x.shape)
 
